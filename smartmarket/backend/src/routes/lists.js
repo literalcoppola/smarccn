@@ -226,4 +226,35 @@ router.delete('/:listId', authMiddleware, async (req, res) => {
   }
 });
 
+// Editar nome da lista
+router.put('/:listId', authMiddleware, async (req, res) => {
+  try {
+    const { listId } = req.params;
+    const { name } = req.body;
+    const userId = req.userId;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Nome da lista é obrigatório' });
+    }
+
+    // Verificar se a lista pertence ao usuário
+    const list = await get(
+      'SELECT * FROM shopping_lists WHERE id = ? AND user_id = ?',
+      [listId, userId]
+    );
+
+    if (!list) {
+      return res.status(404).json({ error: 'Lista não encontrada' });
+    }
+
+    // Atualizar nome da lista
+    await run('UPDATE shopping_lists SET name = ? WHERE id = ?', [name, listId]);
+
+    res.json({ message: 'Lista atualizada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar lista:', error);
+    res.status(500).json({ error: 'Erro ao atualizar lista' });
+  }
+});
+
 module.exports = router;

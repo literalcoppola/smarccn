@@ -53,14 +53,17 @@ const get = (sql, params = []) => {
 // Inicializar tabelas
 const initialize = async () => {
   try {
-    // Tabela de Usuários
+    // Tabela de Usuários (com tipo: customer ou market)
     await run(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        user_type TEXT NOT NULL DEFAULT 'customer',
+        market_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (market_id) REFERENCES markets(id)
       )
     `);
 
@@ -76,29 +79,35 @@ const initialize = async () => {
       )
     `);
 
-    // Tabela de Produtos
+    // Tabela de Produtos (agora sem código de barras obrigatório)
     await run(`
       CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        barcode TEXT UNIQUE,
         name TEXT NOT NULL,
+        description TEXT,
         brand TEXT,
         category TEXT,
+        unit TEXT DEFAULT 'un',
         image_url TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_by_market_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by_market_id) REFERENCES markets(id)
       )
     `);
 
-    // Tabela de Preços (produtos em mercados específicos)
+    // Tabela de Preços (produtos em mercados específicos) - agora com estoque
     await run(`
       CREATE TABLE IF NOT EXISTS product_prices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER NOT NULL,
         market_id INTEGER NOT NULL,
         price REAL NOT NULL,
+        stock_quantity INTEGER DEFAULT 0,
+        is_available BOOLEAN DEFAULT 1,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (product_id) REFERENCES products(id),
-        FOREIGN KEY (market_id) REFERENCES markets(id)
+        FOREIGN KEY (market_id) REFERENCES markets(id),
+        UNIQUE(product_id, market_id)
       )
     `);
 
@@ -156,11 +165,50 @@ const initialize = async () => {
     const marketsCount = await get('SELECT COUNT(*) as count FROM markets');
     if (marketsCount.count === 0) {
       await run(`
-        INSERT INTO markets (name, address, latitude, longitude) VALUES
-        ('Mercado da Esquina', 'Rua das Flores, 123', -23.5505, -46.6333),
-        ('Supermercado Central', 'Av. Principal, 456', -23.5515, -46.6343),
-        ('Mercadinho Bom Preço', 'Rua do Comércio, 789', -23.5495, -46.6323)
+        INSERT INTO markets (na me, address, latitude, longitude) VALUES
+        ('Tauste Taubaté', 'R. Domingos Rodrigues do Prado, 99 - Vila Edmundo, Taubaté - SP', -23.5505, -46.6333),
+        ('Carrefour Hipermercado', 'Av. Charles Schnneider, 1750 - Barranco, Taubaté - SP', -23.5515, -46.6343),
+        ('Atacadão - Taubaté', 'Av. Dom Pedro I, 3060 - Jardim Baronesa, Taubaté - SP', -23.5495, -46.6323)
       `);
+
+      // Inserir produtos de exemplo
+      const categories = [
+        { name: 'Arroz Branco 5kg', category: 'Alimentos Básicos', brand: 'Tio João', unit: 'kg' },
+        { name: 'Feijão Preto 1kg', category: 'Alimentos Básicos', brand: 'Camil', unit: 'kg' },
+        { name: 'Óleo de Soja 900ml', category: 'Óleos', brand: 'Liza', unit: 'ml' },
+        { name: 'Açúcar Cristal 1kg', category: 'Alimentos Básicos', brand: 'União', unit: 'kg' },
+        { name: 'Café Torrado 500g', category: 'Bebidas', brand: 'Pilão', unit: 'g' },
+        { name: 'Leite Integral 1L', category: 'Laticínios', brand: 'Parmalat', unit: 'L' },
+        { name: 'Pão de Forma', category: 'Padaria', brand: 'Pullman', unit: 'un' },
+        { name: 'Macarrão Espaguete 500g', category: 'Massas', brand: 'Barilla', unit: 'g' },
+        { name: 'Molho de Tomate 340g', category: 'Molhos', brand: 'Quero', unit: 'g' },
+        { name: 'Refrigerante Cola 2L', category: 'Bebidas', brand: 'Coca-Cola', unit: 'L' },
+        { name: 'Sabão em Pó 1kg', category: 'Limpeza', brand: 'Omo', unit: 'kg' },
+        { name: 'Papel Higiênico 12 rolos', category: 'Higiene', brand: 'Neve', unit: 'un' }
+      ];
+
+      for (const product of categories) {
+        await run(
+          `INSERT INTO products (name, category, brand, unit) VALUES (?, ?, ?, ?)`,
+          [product.name, product.category, product.brand, product.unit]
+        );
+      }
+
+      // Inserir preços para cada produto em cada mercado
+      for (let productId = 1; productId <= 12; productId++) {
+        for (let marketId = 1; marketId <= 3; marketId++) {
+          const basePrice = 5 + (productId * 2);
+          const variation = (Math.random() * 3) - 1.5; // variação de ±1.5
+          const price = (basePrice + variation).toFixed(2);
+          const stock = Math.floor(Math.random() * 50) + 10;
+
+          await run(
+            `INSERT INTO product_prices (product_id, market_id, price, stock_quantity, is_available) 
+             VALUES (?, ?, ?, ?, 1)`,
+            [productId, marketId, price, stock]
+          );
+        }
+      }
     }
 
     console.log('✅ Tabelas criadas/verificadas com sucesso');
